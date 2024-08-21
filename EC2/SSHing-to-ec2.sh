@@ -11,6 +11,11 @@ ssh i sampelfile.pem ec2-users@Public IPv4 address
 
 
 
+# To close
+exit
+
+
+
 
 
 
