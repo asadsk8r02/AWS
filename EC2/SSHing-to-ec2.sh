@@ -16,6 +16,10 @@ exit
 
 
 
+# Or you can use EC2 instance connect as an alternate to SSHIng to EC2 instance.
+
+
+
 
 
 
