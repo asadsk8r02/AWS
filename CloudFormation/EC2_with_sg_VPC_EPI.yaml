@@ -1,0 +1,163 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "CloudFormation template to create an EC2 instance with VPC, subnet, security group, Elastic IP, with parameters, mappings, conditions, and outputs."
+
+Parameters:
+  InstanceType:
+    Description: "EC2 instance type"
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro
+      - t2.small
+      - t2.medium
+    ConstraintDescription: "must be a valid EC2 instance type."
+
+  KeyName:
+    Description: "The EC2 Key Pair to allow SSH access to the instance"
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: "must be the name of an existing EC2 KeyPair."
+
+  EnvironmentType:
+    Description: "The environment type to determine whether to create resources"
+    Type: String
+    AllowedValues:
+      - Production
+      - Development
+    Default: Development
+
+Mappings:
+  RegionMap:
+    us-east-1:
+      AMI: "ami-0c55b159cbfafe1f0"
+    us-west-2:
+      AMI: "ami-0a887e401f7654935"
+
+Conditions:
+  IsProduction: !Equals [ !Ref EnvironmentType, "Production" ]
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: "10.0.0.0/16"
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: "MyVPC"
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: "MyInternetGateway"
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: "10.0.1.0/24"
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: "MyPublicSubnet"
+
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: "MyRouteTable"
+
+  Route:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref InternetGateway
+
+  SubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref RouteTable
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: "Allow SSH and HTTP access"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: "0.0.0.0/0"
+      Tags:
+        - Key: Name
+          Value: "MySecurityGroup"
+
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      ImageId: !FindInMap [ RegionMap, !Ref "AWS::Region", AMI ]
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeviceIndex: 0
+          SubnetId: !Ref PublicSubnet
+          GroupSet: 
+            - !Ref SecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Join
+            - "-"
+            - - "EC2Instance"
+              - !Ref EnvironmentType
+    Condition: IsProduction
+
+  ElasticIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      InstanceId: !Ref EC2Instance
+    Condition: IsProduction
+
+Outputs:
+  InstanceId:
+    Description: "The Instance ID of the EC2 instance"
+    Value: !Ref EC2Instance
+    Condition: IsProduction
+
+  InstancePublicIP:
+    Description: "The public IP address of the EC2 instance"
+    Value: !Ref ElasticIP
+    Condition: IsProduction
+
+  VPCId:
+    Description: "VPC Id"
+    Value: !Ref VPC
+
+  PublicSubnetId:
+    Description: "Subnet Id"
+    Value: !Ref PublicSubnet
+
+  SecurityGroupId:
+    Description: "Security Group Id"
+    Value: !Ref SecurityGroup
+
+  EnvironmentInfo:
+    Description: "Information about the environment"
+    Value: !Sub "This EC2 instance is running in a ${EnvironmentType} environment."
